@@ -1,5 +1,5 @@
 import config as cfg
-import os, re, time, subprocess, json
+import os, re, time, subprocess, json, requests
 from pathlib import Path
 from llama_index.llms.openai_like import OpenAILike
 from llama_index.core.llms import ChatMessage, MessageRole
@@ -31,6 +31,9 @@ config_names = (
     'llama_cpp_server',
     'llama_cpp_port',
     'llama_cpp_other_args',
+    'use_remote_llama_server',
+    'remote_llama_server_address',
+    'remote_llama_server_key',
     'text2md_prompt',
     'summary_prompt',
 )
@@ -343,6 +346,19 @@ def stop_llama_server(print=_print):
         print("llama.cpp 服务器已停止")
 
 
+def check_remote_llama_cpp_address(print=_print):
+    """检查远程 llama.cpp 服务器地址是否可用"""
+    try:
+        url = f"{cfg.remote_llama_server_address.rstrip('/')}/v1/health"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # 检查HTTP状态码
+        data = response.json()
+        return data.get("status") == "ok"
+    except Exception as e:
+        print(f"检查远程 llama.cpp 服务器失败: {e}")
+        return False
+
+
 def query_llama_server(text: str, prompt=None, print=_print) -> str:
     """向 llama.cpp 服务器发送查询，生成总结"""
 
@@ -351,9 +367,14 @@ def query_llama_server(text: str, prompt=None, print=_print) -> str:
     else:
         assert '{text}' in prompt, "提示模板中必须包含 {text} 占位符"
 
+    if cfg.use_remote_llama_server:
+        api_base = cfg.remote_llama_server_address.rstrip('/') + '/v1'
+    else:
+        api_base = f'http://localhost:{cfg.llama_cpp_port}/v1'
+
     gw = OpenAILike(
-        api_base=f'http://localhost:{cfg.llama_cpp_port}/v1',  # 指向国产模型平台
-        api_key='',
+        api_base=api_base,  # 指向llama.cpp服务器
+        api_key=cfg.remote_llama_server_key,
         model="qwen3.5",                # 千问3.5
         temperature=0.9,                # 精准输出控制
         context_window=128 * 1024,      # 超长上下文支持

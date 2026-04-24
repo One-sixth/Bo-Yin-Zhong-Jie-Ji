@@ -36,6 +36,12 @@ llama_cpp_server = r'E:\Software\LLM\llama-bin-win-cuda-13.1-x64\llama-server.ex
 llama_cpp_port = 45124
 # llama-cpp 服务器其他参数
 llama_cpp_other_args = ['--temp', '0.95', '--top-p', '0.95', '--min-p', '0.0', '--top-k', '30', '--reasoning', 'off', "--ctx-size", '131072']
+# 使用远程 llama-server
+use_remote_llama_server = False
+# 远程 llama-server 地址
+remote_llama_server_address = "http://localhost:45124"
+# 远程 llama-server 密钥
+remote_llama_server_key = ""
 
 # -------------------------------------------------------------------
 # 输入输出目录，注意，输入和输出是同一个目录

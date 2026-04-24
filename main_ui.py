@@ -272,6 +272,28 @@ class MainInterface(QWidget):
         self.llama_cpp_other_args_edit.textChanged.connect(self.on_llama_cpp_other_args_edit_changed)
         config_layout.addWidget(self.llama_cpp_other_args_edit, row, 1, 1, 2)
 
+        # 使用远程llama-server
+        row = 9
+        self.use_remote_llama_server_checkbox = CheckBox("使用远程llama-server")
+        self.use_remote_llama_server_checkbox.toggled.connect(self.on_use_remote_llama_server_checkbox_toggled)
+        config_layout.addWidget(self.use_remote_llama_server_checkbox, row, 0, 1, 3)
+
+        # 远程llama-server地址
+        row = 10
+        config_layout.addWidget(BodyLabel("远程llama-server地址："), row, 0)
+        self.remote_llama_server_address_edit = LineEdit()
+        self.remote_llama_server_address_edit.setPlaceholderText("http://192.168.1.100:45124")
+        self.remote_llama_server_address_edit.textChanged.connect(self.on_remote_llama_server_address_edit_changed)
+        config_layout.addWidget(self.remote_llama_server_address_edit, row, 1, 1, 2)
+
+        # 远程llama-server密钥
+        row = 11
+        config_layout.addWidget(BodyLabel("远程llama-server密钥："), row, 0)
+        self.remote_llama_server_key_edit = LineEdit()
+        self.remote_llama_server_key_edit.setPlaceholderText("留空则无需密钥")
+        self.remote_llama_server_key_edit.textChanged.connect(self.on_remote_llama_server_key_edit_changed)
+        config_layout.addWidget(self.remote_llama_server_key_edit, row, 1, 1, 2)
+
         config_card.viewLayout.addLayout(config_layout)
         left_layout.addWidget(config_card)
 
@@ -384,6 +406,11 @@ class MainInterface(QWidget):
         self.llama_cpp_edit.setText(cfg.llama_cpp_server)
         self.llama_cpp_port_edit.setText(str(cfg.llama_cpp_port))
         self.llama_cpp_other_args_edit.setText(' '.join(cfg.llama_cpp_other_args))
+        self.use_remote_llama_server_checkbox.setCheckState(Qt.Checked if cfg.use_remote_llama_server else Qt.Unchecked)
+        self.remote_llama_server_address_edit.setText(cfg.remote_llama_server_address)
+        self.remote_llama_server_address_edit.setEnabled(cfg.use_remote_llama_server)
+        self.remote_llama_server_key_edit.setText(cfg.remote_llama_server_key)
+        self.remote_llama_server_key_edit.setEnabled(cfg.use_remote_llama_server)
 
     # --------------------------------------------------------------------
 
@@ -400,6 +427,9 @@ class MainInterface(QWidget):
         self.summarize_button.setEnabled(False)
         self.full_process_button.setEnabled(False)
         self.bbdown_audio_only_checkbox.setEnabled(False)
+        self.use_remote_llama_server_checkbox.setEnabled(False)
+        self.remote_llama_server_address_edit.setEnabled(False)
+        self.remote_llama_server_key_edit.setEnabled(False)
 
     def enable_all_button(self):
         """启用所有按钮"""
@@ -414,6 +444,9 @@ class MainInterface(QWidget):
         self.summarize_button.setEnabled(True)
         self.full_process_button.setEnabled(True)
         self.bbdown_audio_only_checkbox.setEnabled(True)
+        self.use_remote_llama_server_checkbox.setEnabled(True)
+        self.remote_llama_server_address_edit.setEnabled(cfg.use_remote_llama_server)
+        self.remote_llama_server_key_edit.setEnabled(cfg.use_remote_llama_server)
 
     def select_file(self, title, line_edit):
         """选择文件"""
@@ -459,27 +492,35 @@ class MainInterface(QWidget):
             self.print("qwen3-asr 不存在或不可用")
             is_ok = False
 
-        # 检查 LLM 模型文件
-        if os.path.exists(cfg.llm_gguf_file):
-            self.print(f"LLM 模型文件存在: {cfg.llm_gguf_file}")
-        else:
-            self.print(f"LLM 模型文件不存在: {cfg.llm_gguf_file}")
-            is_ok = False
+        if cfg.use_remote_llama_server:
+            # 检查远程 Llama-CPP 服务器
+            self.print(f"使用远程 llama-server: {cfg.remote_llama_server_address}")
+            if utils.check_remote_llama_cpp_address(print=self.print):
+                self.print("远程 llama-server 可用")
+            else:
+                self.print("远程 llama-server 不可用")
+                is_ok = False
 
-        # 检查视觉投影层文件
-        if os.path.exists(cfg.mmproj_gguf_file):
-            self.print(f"视觉投影层文件存在: {cfg.mmproj_gguf_file}")
         else:
-            self.print(f"视觉投影层文件不存在: {cfg.mmproj_gguf_file}")
-            is_ok = False
+            # 检查 LLM 模型文件
+            if os.path.exists(cfg.llm_gguf_file):
+                self.print(f"LLM 模型文件存在: {cfg.llm_gguf_file}")
+            else:
+                self.print(f"LLM 模型文件不存在: {cfg.llm_gguf_file}")
+                is_ok = False
 
-        # 检查 Llama-CPP 服务器
-        # 检查是否可用
-        if utils.check_llama_cpp_exe(print=self.print):
-            self.print("Llama-CPP 服务器可用")
-        else:
-            self.print("Llama-CPP 服务器不可用")
-            is_ok = False
+            # 检查视觉投影层文件
+            if os.path.exists(cfg.mmproj_gguf_file):
+                self.print(f"视觉投影层文件存在: {cfg.mmproj_gguf_file}")
+            else:
+                self.print(f"视觉投影层文件不存在: {cfg.mmproj_gguf_file}")
+                is_ok = False
+            
+            if utils.check_llama_cpp_exe(print=self.print):
+                self.print("Llama-CPP 服务器可用")
+            else:
+                self.print("Llama-CPP 服务器不可用")
+                is_ok = False
 
         self.print("环境检查完成！")
         return is_ok
@@ -618,10 +659,13 @@ class MainInterface(QWidget):
             return
 
         # 启动 llama.cpp 服务器
-        self.print("启动 llama.cpp 服务器...")
-        if not utils.start_llama_server(print=self.print):
-            self.print("错误！服务器启动失败")
-            return
+        if not cfg.use_remote_llama_server:
+            self.print("启动 llama.cpp 服务器...")
+            if not utils.start_llama_server(print=self.print):
+                self.print("错误！服务器启动失败")
+                return
+        else:
+            self.print(f"使用远程 llama-server: {cfg.remote_llama_server_address}")
 
         # 生成总结
         self.print(f"开始生成 {len(text_files)} 个文本文件的总结")
@@ -638,8 +682,9 @@ class MainInterface(QWidget):
             output_file_tmp.replace(output_file)
 
         # 停止服务器
-        utils.stop_llama_server(print=self.print)
-        self.print("服务器已停止")
+        if not cfg.use_remote_llama_server:
+            utils.stop_llama_server(print=self.print)
+            self.print("服务器已停止")
         self.print("总结完成！")
 
     # --------------------------------------------------------------------
@@ -743,6 +788,20 @@ class MainInterface(QWidget):
     def on_llama_cpp_other_args_edit_changed(self, text: str):
         """llama.cpp 其他参数改变时更新配置"""
         cfg.llama_cpp_other_args = text.split()
+
+    def on_use_remote_llama_server_checkbox_toggled(self, checked: bool):
+        """使用远程llama-server复选框改变时更新配置"""
+        cfg.use_remote_llama_server = bool(checked)
+        self.remote_llama_server_address_edit.setEnabled(bool(checked))
+        self.remote_llama_server_key_edit.setEnabled(bool(checked))
+
+    def on_remote_llama_server_address_edit_changed(self, text: str):
+        """远程llama-server地址改变时更新配置"""
+        cfg.remote_llama_server_address = text
+
+    def on_remote_llama_server_key_edit_changed(self, text: str):
+        """远程llama-server密钥改变时更新配置"""
+        cfg.remote_llama_server_key = text
 
     # --------------------------------------------------------------------
 
