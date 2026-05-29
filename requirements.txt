@@ -1,0 +1,4 @@
+﻿openai
+PySide6
+qfluentwidgets
+requests

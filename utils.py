@@ -1,8 +1,7 @@
 import config as cfg
 import os, re, time, subprocess, json, requests
 from pathlib import Path
-from llama_index.llms.openai_like import OpenAILike
-from llama_index.core.llms import ChatMessage, MessageRole
+from openai import OpenAI
 
 
 # -------------------------------------------------------------------
@@ -27,7 +26,6 @@ config_names = (
     'qwen3_asr_exe',
     'qwen3_asr_other_args',
     'llm_gguf_file',
-    'mmproj_gguf_file',
     'llama_cpp_server',
     'llama_cpp_port',
     'llama_cpp_other_args',
@@ -287,9 +285,6 @@ def start_llama_server(print=_print):
         '--model', cfg.llm_gguf_file,
         '--port', cfg.llama_cpp_port,
     ]
-    if cfg.mmproj_gguf_file is not None and len(cfg.mmproj_gguf_file) > 0:
-        command.extend(['--mmproj', cfg.mmproj_gguf_file])
-
     command.extend(cfg.llama_cpp_other_args)
 
     command = [str(c) for c in command]
@@ -299,43 +294,29 @@ def start_llama_server(print=_print):
     # 重定向标准输出和错误，以便捕获启动信息
     cfg.llama_cpp_server_proc = subprocess.Popen(
         command,
-        stdout=subprocess.PIPE,  # 捕获标准输出
-        stderr=subprocess.STDOUT,  # 合并标准错误到标准输出
-        text=True,  # 以文本模式读取
-        bufsize=1,  # 行缓冲
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
 
-    # 等待启动成功的标志
+    print("等待服务器启动（health 检查）...")
+    local_base_url = f"http://127.0.0.1:{cfg.llama_cpp_port}"
     start_time = time.time()
-    timeout = 120  # 120秒超时
-    success_patterns = [
-        'server is listening on',
-    ]
-
-    print("等待服务器启动...")
+    timeout = 120
     while time.time() - start_time < timeout:
         if cfg.llama_cpp_server_proc.poll() is not None:
-            # 进程已退出，启动失败
             print("服务器启动失败，进程已退出")
             return False
-
-        # 读取一行输出
-        line = cfg.llama_cpp_server_proc.stdout.readline()
-        if line:
-            print(line, sep='', end='', flush=True)  # 打印服务器输出
-            # 检查是否包含成功启动的标志
-            for pattern in success_patterns:
-                if pattern in line:
-                    print("服务器启动成功！")
-                    return True
-
-        time.sleep(0.1)  # 短暂睡眠，避免CPU占用过高
+        if check_remote_llama_cpp_address(base_url=local_base_url, print=lambda *_: None):
+            print("服务器启动成功！")
+            return True
+        time.sleep(1)
 
     # 超时
     print("服务器启动超时")
     cfg.llama_cpp_server_proc.terminate()
     cfg.llama_cpp_server_proc = None
+    return False
 
 
 def stop_llama_server(print=_print):
@@ -346,16 +327,18 @@ def stop_llama_server(print=_print):
         print("llama.cpp 服务器已停止")
 
 
-def check_remote_llama_cpp_address(print=_print):
-    """检查远程 llama.cpp 服务器地址是否可用"""
+def check_remote_llama_cpp_address(base_url=None, print=_print):
+    """检查 llama.cpp 服务器地址是否可用（支持本地和远程）"""
     try:
-        url = f"{cfg.remote_llama_server_address.rstrip('/')}/v1/health"
+        if base_url is None:
+            base_url = cfg.remote_llama_server_address
+        url = f"{base_url.rstrip('/')}/v1/health"
         response = requests.get(url, timeout=10)
         response.raise_for_status()  # 检查HTTP状态码
         data = response.json()
         return data.get("status") == "ok"
     except Exception as e:
-        print(f"检查远程 llama.cpp 服务器失败: {e}")
+        print(f"检查 llama.cpp 服务器失败: {e}")
         return False
 
 
@@ -369,40 +352,39 @@ def query_llama_server(text: str, prompt=None, print=_print) -> str:
 
     if cfg.use_remote_llama_server:
         api_base = cfg.remote_llama_server_address.rstrip('/') + '/v1'
+        api_key = cfg.remote_llama_server_key
     else:
-        api_base = f'http://localhost:{cfg.llama_cpp_port}/v1'
+        # api_base = f'http://localhost:{cfg.llama_cpp_port}/v1'
+        api_base = f'http://127.0.0.1:{cfg.llama_cpp_port}/v1'
+        api_key = ''
 
-    gw = OpenAILike(
-        api_base=api_base,  # 指向llama.cpp服务器
-        api_key=cfg.remote_llama_server_key,
-        model="qwen3.5",                # 千问3.5
-        temperature=0.9,                # 精准输出控制
-        context_window=128 * 1024,      # 超长上下文支持
-        max_tokens=128 * 1024,          # 单次响应最大token
-        is_chat_model=True,             # 必须开启聊天模式
-        max_retries=5,                  # 自动重试次数
-        timeout=10,                     # 网络超时宽容
-        additional_kwargs={
-            "extra_body": {
-                "enable_thinking": True  # 关闭Qwen思考过程
-            }
-        }
+    # 创建 OpenAI 客户端
+    client = OpenAI(
+        base_url=api_base,
+        api_key=api_key or "not-needed"  # 本地服务器可能不需要 key
     )
 
     # 使用流式输出
-    response = gw.stream_chat(messages=[
-            ChatMessage(role=MessageRole.SYSTEM, content="你是一个强大的AI助手"),
-            ChatMessage(
-                role=MessageRole.USER,
-                content=prompt.format(text=text)
-            )
-        ]
+    response = client.chat.completions.create(
+        model="default",  # llama.cpp 通常使用 default 或自定义模型名
+        messages=[
+            {"role": "system", "content": "你是一个强大的AI助手"},
+            {"role": "user", "content": prompt.format(text=text)}
+        ],
+        temperature=0.9,
+        max_tokens=256 * 1024,
+        stream=True,
+        extra_body={
+            "enable_thinking": False  # 关闭Qwen思考过程
+        }
     )
 
     msg = []
     for chunk in response:
-        msg.append(chunk.delta)
-        print(chunk.delta, sep='', end='', flush=True)
+        content = chunk.choices[0].delta.content
+        if content:
+            msg.append(content)
+            print(content, sep='', end='', flush=True)
 
     msg = ''.join(msg)
     return msg

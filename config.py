@@ -27,15 +27,13 @@ qwen3_asr_other_args = []
 
 # -------------------------------------------------------------------
 # qwen3.5 35b a3b q4 大模型
-llm_gguf_file = r'E:\Software\LLM\qwen3.5-35b-a3b\Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf'
-# 大模型视觉投影层
-mmproj_gguf_file = r'E:\Software\LLM\qwen3.5-35b-a3b\mmproj-F16.gguf'
+llm_gguf_file = r'E:\Software\LLM\qwen3.6-35b-a3b\Qwen3.6-35B-A3B-APEX-MTP-I-Quality.gguf'
 # llama-cpp 服务器
 llama_cpp_server = r'E:\Software\LLM\llama-bin-win-cuda-13.1-x64\llama-server.exe'
 # llama-cpp 服务器端口
 llama_cpp_port = 45124
 # llama-cpp 服务器其他参数
-llama_cpp_other_args = ['--temp', '0.95', '--top-p', '0.95', '--min-p', '0.0', '--top-k', '30', '--reasoning', 'off', "--ctx-size", '131072']
+llama_cpp_other_args = ['--temp', '0.95', '--top-p', '0.95', '--min-p', '0.0', '--top-k', '30', '--reasoning', 'off', "--ctx-size", '262144']
 # 使用远程 llama-server
 use_remote_llama_server = False
 # 远程 llama-server 地址

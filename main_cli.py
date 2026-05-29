@@ -6,14 +6,12 @@ sys.stderr.reconfigure(encoding='utf8', errors='ignore')
 # ------------------------------------------------------------
 
 import config as cfg
-import json
 from argparse import ArgumentParser
 from utils import *
 
 
 def main(input_output_folder):
 
-    # config_file = cfg.project_root / 'config.json'
     load_config()
     print_config()
 

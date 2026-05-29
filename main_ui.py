@@ -238,18 +238,8 @@ class MainInterface(QWidget):
         config_layout.addWidget(self.llm_gguf_edit, row, 1)
         config_layout.addWidget(self.llm_gguf_button, row, 2)
 
-        # 视觉投影层路径
-        row = 5
-        config_layout.addWidget(BodyLabel("视觉投影层路径："), row, 0)
-        self.mmproj_gguf_edit = LineEdit()
-        self.mmproj_gguf_edit.textChanged.connect(self.on_mmproj_gguf_edit_changed)
-        self.mmproj_gguf_button = PushButton("浏览")
-        self.mmproj_gguf_button.clicked.connect(lambda: self.select_file("视觉投影层文件", self.mmproj_gguf_edit))
-        config_layout.addWidget(self.mmproj_gguf_edit, row, 1)
-        config_layout.addWidget(self.mmproj_gguf_button, row, 2)
-
         # Llama-CPP 服务器路径
-        row = 6
+        row = 5
         config_layout.addWidget(BodyLabel("Llama-CPP 服务器路径："), row, 0)
         self.llama_cpp_edit = LineEdit()
         self.llama_cpp_edit.textChanged.connect(self.on_llama_cpp_edit_changed)
@@ -259,27 +249,27 @@ class MainInterface(QWidget):
         config_layout.addWidget(self.llama_cpp_button, row, 2)
 
         # Llama服务端口
-        row = 7
+        row = 6
         config_layout.addWidget(BodyLabel("Llama服务端口："), row, 0)
         self.llama_cpp_port_edit = LineEdit()
         self.llama_cpp_port_edit.textChanged.connect(self.on_llama_cpp_port_edit_changed)
         config_layout.addWidget(self.llama_cpp_port_edit, row, 1)
 
         # Llama服务其他参数
-        row = 8
+        row = 7
         config_layout.addWidget(BodyLabel("Llama服务其他参数："), row, 0)
         self.llama_cpp_other_args_edit = LineEdit()
         self.llama_cpp_other_args_edit.textChanged.connect(self.on_llama_cpp_other_args_edit_changed)
         config_layout.addWidget(self.llama_cpp_other_args_edit, row, 1, 1, 2)
 
         # 使用远程llama-server
-        row = 9
+        row = 8
         self.use_remote_llama_server_checkbox = CheckBox("使用远程llama-server")
         self.use_remote_llama_server_checkbox.toggled.connect(self.on_use_remote_llama_server_checkbox_toggled)
         config_layout.addWidget(self.use_remote_llama_server_checkbox, row, 0, 1, 3)
 
         # 远程llama-server地址
-        row = 10
+        row = 9
         config_layout.addWidget(BodyLabel("远程llama-server地址："), row, 0)
         self.remote_llama_server_address_edit = LineEdit()
         self.remote_llama_server_address_edit.setPlaceholderText("http://192.168.1.100:45124")
@@ -287,7 +277,7 @@ class MainInterface(QWidget):
         config_layout.addWidget(self.remote_llama_server_address_edit, row, 1, 1, 2)
 
         # 远程llama-server密钥
-        row = 11
+        row = 10
         config_layout.addWidget(BodyLabel("远程llama-server密钥："), row, 0)
         self.remote_llama_server_key_edit = LineEdit()
         self.remote_llama_server_key_edit.setPlaceholderText("留空则无需密钥")
@@ -402,7 +392,6 @@ class MainInterface(QWidget):
         self.qwen3_asr_edit.setText(cfg.qwen3_asr_exe)
         self.qwen3_asr_other_args_edit.setText(' '.join(cfg.qwen3_asr_other_args))
         self.llm_gguf_edit.setText(cfg.llm_gguf_file)
-        self.mmproj_gguf_edit.setText(cfg.mmproj_gguf_file)
         self.llama_cpp_edit.setText(cfg.llama_cpp_server)
         self.llama_cpp_port_edit.setText(str(cfg.llama_cpp_port))
         self.llama_cpp_other_args_edit.setText(' '.join(cfg.llama_cpp_other_args))
@@ -509,13 +498,6 @@ class MainInterface(QWidget):
                 self.print(f"LLM 模型文件不存在: {cfg.llm_gguf_file}")
                 is_ok = False
 
-            # 检查视觉投影层文件
-            if os.path.exists(cfg.mmproj_gguf_file):
-                self.print(f"视觉投影层文件存在: {cfg.mmproj_gguf_file}")
-            else:
-                self.print(f"视觉投影层文件不存在: {cfg.mmproj_gguf_file}")
-                is_ok = False
-            
             if utils.check_llama_cpp_exe(print=self.print):
                 self.print("Llama-CPP 服务器可用")
             else:
@@ -772,10 +754,6 @@ class MainInterface(QWidget):
     def on_llm_gguf_edit_changed(self, text: str):
         """llm gguf 文件改变时更新配置"""
         cfg.llm_gguf_file = text
-
-    def on_mmproj_gguf_edit_changed(self, text: str):
-        """mmproj gguf 文件改变时更新配置"""
-        cfg.mmproj_gguf_file = text
 
     def on_llama_cpp_edit_changed(self, text: str):
         """llama.cpp 服务器改变时更新配置"""
