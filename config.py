@@ -42,6 +42,15 @@ remote_llama_server_address = "http://localhost:45124"
 remote_llama_server_key = ""
 
 # -------------------------------------------------------------------
+# LLM 采样参数（客户端请求级，会覆盖服务器端 --temp 等默认值）
+llm_temperature = 0.9
+# LLM 最大生成 token 数
+llm_max_tokens = 262144
+
+# 运行时标志：请求停止当前任务（点击 UI 停止按钮时置位，不持久化）
+stop_requested: bool = False
+
+# -------------------------------------------------------------------
 # 输入输出目录，注意，输入和输出是同一个目录
 input_output_dir = r"test_input"
 

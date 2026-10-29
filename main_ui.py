@@ -30,6 +30,7 @@ import config as cfg
 class WorkerThread(QThread):
     task_start = Signal()
     task_done = Signal()
+    task_error = Signal(str)
 
     """工作线程，用于执行下载、提取字幕、总结等任务"""
     def __init__(self):
@@ -61,8 +62,14 @@ class WorkerThread(QThread):
 
             # 函数，功能
             func, args = self.command
-            # 执行任务
-            func(*args)
+            # 新任务开始：清除上次的停止请求（旧任务此时必然已结束：队列 maxsize=1）
+            cfg.stop_requested = False
+            # 执行任务（异常兜底：防止线程死亡导致 UI 按钮永久禁用）
+            try:
+                func(*args)
+            except Exception:
+                import traceback
+                self.task_error.emit(f"任务异常中断:\n{traceback.format_exc()}")
             self.msleep(10)
 
     def stop(self):
@@ -161,6 +168,7 @@ class MainInterface(QWidget):
         self.worker_thread = WorkerThread()
         self.worker_thread.task_start.connect(self.disbale_all_button)
         self.worker_thread.task_done.connect(self.enable_all_button)
+        self.worker_thread.task_error.connect(self.print)
         self.worker_thread.start()
 
     def init_ui(self):
@@ -342,6 +350,10 @@ class MainInterface(QWidget):
         self.full_process_button = PrimaryPushButton("🚀一键全流程")
         self.full_process_button.clicked.connect(self.full_process_entry)
 
+        # 停止任务按钮（任务运行时保持可点，不在禁用列表中）
+        self.stop_button = PushButton(Icon(FluentIcon.CLOSE), "停止任务")
+        self.stop_button.clicked.connect(self.stop_tasks)
+
         # 只下载音频复选框
         self.bbdown_audio_only_checkbox = CheckBox("只下载音频")
         self.bbdown_audio_only_checkbox.toggled.connect(lambda checked: setattr(cfg, 'bbdown_only_audio', bool(checked)))
@@ -357,6 +369,7 @@ class MainInterface(QWidget):
         buttons_layout.addWidget(self.extract_subtitle_button)
         buttons_layout.addWidget(self.summarize_button)
         buttons_layout.addWidget(self.full_process_button)
+        buttons_layout.addWidget(self.stop_button)
         buttons_layout.addWidget(self.bbdown_audio_only_checkbox)
         buttons_layout.addWidget(self.help_button)
 
@@ -402,6 +415,15 @@ class MainInterface(QWidget):
         self.remote_llama_server_key_edit.setEnabled(cfg.use_remote_llama_server)
 
     # --------------------------------------------------------------------
+
+    def stop_tasks(self):
+        """请求停止当前运行中的任务"""
+        if not self.worker_thread._working:
+            self.print("当前没有运行中的任务")
+            return
+        cfg.stop_requested = True
+        self.print("已请求停止任务，正在终止子进程...")
+        utils.stop_all_tasks(print=self.print)
 
     def disbale_all_button(self):
         """禁用所有按钮"""
@@ -560,10 +582,15 @@ class MainInterface(QWidget):
         # 开始下载
         self.print(f"开始下载 {len(bv_ids)} 个视频")
         for bv_id in bv_ids:
+            if cfg.stop_requested:
+                self.print("任务已停止")
+                return
             self.print(f"下载 BV{bv_id}")
             success = utils.download_video(bv_id, cfg.input_output_dir, cfg.bbdown_only_audio, print=self.print)
             if success:
                 self.print(f"下载成功: BV{bv_id}")
+            elif cfg.stop_requested:
+                self.print(f"已停止: BV{bv_id}")
             else:
                 self.print(f"下载失败: BV{bv_id}")
 
@@ -596,6 +623,9 @@ class MainInterface(QWidget):
         # 提取字幕
         self.print(f"开始提取 {len(media_files)} 个媒体文件的字幕")
         for media_file in media_files:
+            if cfg.stop_requested:
+                self.print("任务已停止")
+                return
 
             out_file_pre: Path = media_file.with_suffix('.txt')
             if out_file_pre.exists():
@@ -652,6 +682,10 @@ class MainInterface(QWidget):
         # 生成总结
         self.print(f"开始生成 {len(text_files)} 个文本文件的总结")
         for text_file in text_files:
+            if cfg.stop_requested:
+                self.print("任务已停止")
+                break
+
             output_file: Path = text_file.with_suffix('.md')
             output_file_tmp: Path = text_file.with_suffix('.md_tmp')
 
@@ -660,14 +694,16 @@ class MainInterface(QWidget):
                 continue
 
             self.print(f"处理 {text_file}")
-            utils.summarize_subtitles(text_file, output_file_tmp, prompt=cfg.text2md_prompt, print=self.print)
+            is_ok = utils.summarize_subtitles(text_file, output_file_tmp, prompt=cfg.text2md_prompt, print=self.print)
+            if not is_ok:
+                break
             output_file_tmp.replace(output_file)
 
         # 停止服务器
         if not cfg.use_remote_llama_server:
             utils.stop_llama_server(print=self.print)
             self.print("服务器已停止")
-        self.print("总结完成！")
+        self.print("任务已停止！" if cfg.stop_requested else "总结完成！")
 
     # --------------------------------------------------------------------
 
@@ -688,12 +724,21 @@ class MainInterface(QWidget):
 
         # 2. 下载视频
         self.download_videos()
+        if cfg.stop_requested:
+            self.print("全流程已停止")
+            return
 
         # 3. 提取字幕
         self.extract_subtitles()
+        if cfg.stop_requested:
+            self.print("全流程已停止")
+            return
 
         # 4. 全自动总结
         self.auto_summarize()
+        if cfg.stop_requested:
+            self.print("全流程已停止")
+            return
 
         self.print("全流程完成！")
 
@@ -793,9 +838,10 @@ class MainInterface(QWidget):
         # 停止llama 服务器
         utils.stop_llama_server(print=self.print)
 
+        cfg.stop_requested = True
         if self.worker_thread:
             self.worker_thread.stop()
-            self.worker_thread.wait()
+            self.worker_thread.wait(5000)
 
         # 停止日志线程
         self.log_timer.stop()
@@ -861,6 +907,7 @@ class SummaryInterface(QWidget):
         self.worker_thread = WorkerThread()
         self.worker_thread.task_start.connect(self.disable_all_buttons)
         self.worker_thread.task_done.connect(self.enable_all_buttons)
+        self.worker_thread.task_error.connect(self.print)
         self.worker_thread.start()
 
     def init_ui(self):
@@ -971,11 +1018,16 @@ class SummaryInterface(QWidget):
         self.start_summary_button = PrimaryPushButton("开始二次总结")
         self.start_summary_button.clicked.connect(self.start_summary_entry)
 
+        # 停止任务按钮
+        self.stop_button = PushButton("停止任务")
+        self.stop_button.clicked.connect(self.stop_tasks)
+
         self.help_button = PushButton("帮助")
         self.help_button.clicked.connect(self.show_help)
         self.help_dialog = HelpDialog(help_text=self.help_text)
 
         function_buttons_layout.addWidget(self.start_summary_button)
+        function_buttons_layout.addWidget(self.stop_button)
         function_buttons_layout.addWidget(self.help_button)
 
         function_layout.addLayout(function_buttons_layout)
@@ -1000,6 +1052,14 @@ class SummaryInterface(QWidget):
         self.setLayout(main_layout)
 
     # --------------------------------------------------------------------
+
+    def stop_tasks(self):
+        """请求停止当前运行中的任务"""
+        if not self.worker_thread._working:
+            self.print("当前没有运行中的任务")
+            return
+        cfg.stop_requested = True
+        self.print("已请求停止任务...")
 
     def disable_all_buttons(self):
         """禁用所有按钮"""
@@ -1168,74 +1228,53 @@ class SummaryInterface(QWidget):
         merged_text = ''.join(merged_content)
         self.print(f"合并完成，总长度: {len(merged_text)} 字符")
 
-        # 替换提示词中的 {text}
-        final_prompt = prompt.replace('{text}', merged_text)
-
         # 更新配置
         # self.update_config()
 
-        # 启动 llama.cpp 服务器
-        self.print("启动 llama.cpp 服务器...")
-        if not utils.start_llama_server(print=self.print):
-            self.print("错误！服务器启动失败")
-            return
+        # 启动 llama.cpp 服务器（远程模式只做可用性检查）
+        if cfg.use_remote_llama_server:
+            self.print("使用远程 llama-server，检查可用性...")
+            if not utils.check_remote_llama_cpp_address(print=self.print):
+                self.print("错误！远程 llama-server 不可用")
+                return
+        else:
+            self.print("启动 llama.cpp 服务器...")
+            if not utils.start_llama_server(print=self.print):
+                self.print("错误！服务器启动失败")
+                return
 
-        # 生成总结
+        # 生成总结（统一走 utils 实现，支持远程/本地）
         self.print("发送到服务器进行总结...")
-        summary = self.query_llama_server(final_prompt)
+        summary = None
+        try:
+            summary = utils.query_llama_server(merged_text, prompt=prompt, print=self.print)
+        except Exception as e:
+            self.print(f"错误！总结生成失败: {str(e)}")
 
         # 保存总结
-        output_filename = f'all_{datetime.datetime.now().isoformat().replace(":", '-')}.md'
-        output_file = cfg.project_root / 'sum_output' / output_filename
-        try:
-            output_file.parent.mkdir(parents=True, exist_ok=True)
-            with output_file.open('w', encoding='utf8') as f:
-                f.write(summary)
-            self.print(f"总结已保存到: {output_file}")
-        except Exception as e:
-            self.print(f"保存总结失败: {str(e)}")
+        if summary and cfg.stop_requested:
+            self.print("任务已停止，总结未保存")
+            summary = None
+        if summary is not None and not summary.strip():
+            self.print("警告！总结内容为空（模型没有输出内容）")
+        if summary:
+            output_filename = f'all_{datetime.datetime.now().isoformat().replace(":", '-')}.md'
+            output_file = cfg.project_root / 'sum_output' / output_filename
+            try:
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+                with output_file.open('w', encoding='utf8') as f:
+                    f.write(summary)
+                self.print(f"总结已保存到: {output_file}")
+            except Exception as e:
+                self.print(f"保存总结失败: {str(e)}")
 
-        # 停止服务器
-        utils.stop_llama_server(print=self.print)
-        self.print("服务器已停止")
-        self.print("二阶总结完成！")
+        # 停止服务器（远程模式无需管理服务器生命周期）
+        if not cfg.use_remote_llama_server:
+            utils.stop_llama_server(print=self.print)
+            self.print("服务器已停止")
+        if summary:
+            self.print("二阶总结完成！")
 
-    def query_llama_server(self, text):
-        """向 llama.cpp 服务器发送查询"""
-        from llama_index.llms.openai_like import OpenAILike
-        from llama_index.core.llms import ChatMessage, MessageRole
-
-        gw = OpenAILike(
-            api_base=f'http://localhost:{cfg.llama_cpp_port}/v1',
-            api_key='',
-            model="qwen3.5",
-            temperature=0.9,
-            context_window=128 * 1024,
-            max_tokens=128 * 1024,
-            is_chat_model=True,
-            max_retries=20,
-            timeout=120,
-            additional_kwargs={
-                "extra_body": {
-                    "enable_thinking": True
-                }
-            }
-        )
-
-        # 使用流式输出
-        response = gw.stream_chat(messages=[
-            ChatMessage(role=MessageRole.SYSTEM, content="你是一个强大的AI助手"),
-            ChatMessage(role=MessageRole.USER, content=text)
-        ])
-
-        msg = []
-        for chunk in response:
-            msg.append(chunk.delta)
-            # 实时显示输出
-            self.print(chunk.delta, end='')
-
-        msg = ''.join(msg)
-        return msg
 
     # --------------------------------------------------------------------
 
@@ -1271,9 +1310,10 @@ class SummaryInterface(QWidget):
         # 停止llama 服务器
         utils.stop_llama_server(print=self.print)
 
+        cfg.stop_requested = True
         if self.worker_thread:
             self.worker_thread.stop()
-            self.worker_thread.wait()
+            self.worker_thread.wait(5000)
 
         # 停止日志线程
         self.log_timer.stop()

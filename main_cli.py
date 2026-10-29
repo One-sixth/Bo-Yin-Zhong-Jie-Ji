@@ -71,14 +71,27 @@ def main(input_output_folder):
 
     # 4. 总结字幕内容
     print("\n总结字幕内容...")
+    failed = []
     for out_txt_file, out_asr_complete_file, out_md_file, out_md_file_tmp in tasks:
-        summarize_subtitles(out_txt_file, out_md_file_tmp)
-        out_asr_complete_file.unlink(missing_ok=True)
-        out_md_file_tmp.replace(out_md_file)
+        try:
+            is_ok = summarize_subtitles(out_txt_file, out_md_file_tmp)
+            if is_ok:
+                out_asr_complete_file.unlink(missing_ok=True)
+                out_md_file_tmp.replace(out_md_file)
+            else:
+                failed.append(out_txt_file)
+        except Exception as e:
+            print(f"处理失败 {out_txt_file}: {e}")
+            failed.append(out_txt_file)
 
     # 5. 停止 llama.cpp 服务器
     print("\n停止llama.cpp 服务器...")
     stop_llama_server()
+
+    if failed:
+        print(f"\n以下 {len(failed)} 个文件未处理完成（重跑 main_cli 可续传）:")
+        for f in failed:
+            print(f"  {f}")
 
     print("\n所有操作完成！")
 

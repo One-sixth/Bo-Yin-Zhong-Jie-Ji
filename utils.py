@@ -1,7 +1,7 @@
 import config as cfg
 import os, re, time, subprocess, json, requests
 from pathlib import Path
-from openai import OpenAI
+from openai import OpenAI, NotFoundError
 
 
 # -------------------------------------------------------------------
@@ -32,6 +32,8 @@ config_names = (
     'use_remote_llama_server',
     'remote_llama_server_address',
     'remote_llama_server_key',
+    'llm_temperature',
+    'llm_max_tokens',
     'text2md_prompt',
     'summary_prompt',
 )
@@ -51,7 +53,8 @@ def load_config(print=_print):
     if not config_file.exists():
         return
 
-    data = json.load(config_file.open('r', encoding='utf8'))
+    with config_file.open('r', encoding='utf8') as f:
+        data = json.load(f)
     for name in config_names:
         setattr(cfg, name, data.get(name, getattr(cfg, name)))
 
@@ -140,22 +143,37 @@ def download_video(bv_id: str, output_dir: str, audio_only: bool, print=_print):
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
 
+    pending = b''
     while True:
-        li = cfg.bbdown_proc.stdout.read()
+        if cfg.stop_requested:
+            print('收到停止请求，正在终止下载...')
+            cfg.bbdown_proc.terminate()
+            break
+
+        li = cfg.bbdown_proc.stdout.read(4096)
         if li:
-            li = _auto_decode(li)
-            print(li, sep='', end='', flush=True)
+            # 按 \r\n / \r / \n 行边界切分解码，避免多字节字符被截断；
+            # BBDown 用 \r 刷新进度条，这里统一按换行输出
+            parts = re.split(b'(\r\n|\r|\n)', pending + li)
+            pending = parts.pop()
+            for part in parts:
+                print(_auto_decode(part).replace('\r\n', '\n').replace('\r', '\n'),
+                      sep='', end='', flush=True)
             continue
 
         if cfg.bbdown_proc.poll() is None:
             time.sleep(0.25)
             continue
+        break
 
-        else:
-            break
-
+    if pending:
+        try:
+            text = _auto_decode(pending)
+        except Exception:
+            text = pending.decode('utf8', errors='replace')
+        print(text, sep='', end='', flush=True)
     cfg.bbdown_proc.wait()
-    return cfg.bbdown_proc.returncode == 0
+    return (not cfg.stop_requested) and cfg.bbdown_proc.returncode == 0
 
 
 def stop_download_video(print=_print):
@@ -226,14 +244,15 @@ def convert_to_subtitle(media_file: Path, print=_print):
         li = cfg.qwen3_asr_proc.stdout.readline()
         if li:
             print(li, sep='', end='', flush=True)
-            continue
-
-        if cfg.qwen3_asr_proc.poll() is None:
-            time.sleep(0.25)
-            continue
-
-        else:
+        elif cfg.qwen3_asr_proc.poll() is not None:
             break
+
+        if cfg.stop_requested:
+            print('收到停止请求，正在终止转录...')
+            cfg.qwen3_asr_proc.terminate()
+            break
+
+        time.sleep(0.25)
 
     cfg.qwen3_asr_proc.wait()
     cfg.qwen3_asr_proc = None
@@ -249,6 +268,16 @@ def stop_qwen3_asr(print=_print):
     """停止 qwen3-asr 进程"""
     if cfg.qwen3_asr_proc is not None and cfg.qwen3_asr_proc.poll() is None:
         cfg.qwen3_asr_proc.terminate()
+
+
+def stop_all_tasks(print=_print):
+    """停止所有运行中的下载/转录子进程（不影响 llama-server 生命周期）"""
+    if cfg.bbdown_proc is not None and cfg.bbdown_proc.poll() is None:
+        cfg.bbdown_proc.terminate()
+        print("已终止 BBDown 进程")
+    if cfg.qwen3_asr_proc is not None and cfg.qwen3_asr_proc.poll() is None:
+        cfg.qwen3_asr_proc.terminate()
+        print("已终止 qwen3-asr 进程")
 
 
 # -------------------------------------------------------------------
@@ -327,13 +356,47 @@ def stop_llama_server(print=_print):
         print("llama.cpp 服务器已停止")
 
 
+def _normalize_llama_base_url(address: str) -> str:
+    """归一化 llama-server 地址：剥掉末尾的 / 与 /v1，统一为 host[:port] 形式"""
+    address = address.strip().rstrip('/')
+    while address.endswith('/v1'):
+        address = address[:-3].rstrip('/')
+    return address
+
+
+_model_id_cache = {}
+
+
+def _get_first_model_id(api_base: str, api_key: str, print=_print) -> str:
+    '''探测服务器可用模型 id（取 /v1/models 第一个），失败时退回 default；结果按 api_base 缓存'''
+    if api_base in _model_id_cache:
+        return _model_id_cache[api_base]
+    try:
+        headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
+        r = requests.get(f'{api_base}/models', headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json().get('data') or []
+        if data and data[0].get('id'):
+            _model_id_cache[api_base] = data[0]['id']
+            return data[0]['id']
+    except Exception as e:
+        print(f"探测模型 id 失败（{api_base}/models），使用 default: {e}")
+    return 'default'
+
+
 def check_remote_llama_cpp_address(base_url=None, print=_print):
     """检查 llama.cpp 服务器地址是否可用（支持本地和远程）"""
     try:
         if base_url is None:
             base_url = cfg.remote_llama_server_address
-        url = f"{base_url.rstrip('/')}/v1/health"
-        response = requests.get(url, timeout=10)
+            api_key = cfg.remote_llama_server_key
+        else:
+            # 本地启动检测场景不使用密钥
+            api_key = ""
+        # llama.cpp 官方健康端点是 /health（免认证）；地址兼容带或不带 /v1 的填法
+        url = _normalize_llama_base_url(base_url) + "/health"
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()  # 检查HTTP状态码
         data = response.json()
         return data.get("status") == "ok"
@@ -351,7 +414,8 @@ def query_llama_server(text: str, prompt=None, print=_print) -> str:
         assert '{text}' in prompt, "提示模板中必须包含 {text} 占位符"
 
     if cfg.use_remote_llama_server:
-        api_base = cfg.remote_llama_server_address.rstrip('/') + '/v1'
+        # 地址兼容带或不带 /v1 的填法
+        api_base = _normalize_llama_base_url(cfg.remote_llama_server_address) + '/v1'
         api_key = cfg.remote_llama_server_key
     else:
         # api_base = f'http://localhost:{cfg.llama_cpp_port}/v1'
@@ -364,23 +428,37 @@ def query_llama_server(text: str, prompt=None, print=_print) -> str:
         api_key=api_key or "not-needed"  # 本地服务器可能不需要 key
     )
 
-    # 使用流式输出
-    response = client.chat.completions.create(
-        model="default",  # llama.cpp 通常使用 default 或自定义模型名
-        messages=[
-            {"role": "system", "content": "你是一个强大的AI助手"},
-            {"role": "user", "content": prompt.format(text=text)}
-        ],
-        temperature=0.9,
-        max_tokens=256 * 1024,
-        stream=True,
-        extra_body={
-            "enable_thinking": False  # 关闭Qwen思考过程
-        }
-    )
+    # 使用流式输出；模型 id 失效（服务器更换模型/重启）时清缓存重探一次
+    response = None
+    for _attempt in range(2):
+        # 探测真实模型 id（新版 llama.cpp 服务器会校验模型名）
+        model_name = _get_first_model_id(api_base, api_key, print=print)
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "你是一个强大的AI助手"},
+                    {"role": "user", "content": prompt.replace('{text}', text)}
+                ],
+                temperature=cfg.llm_temperature,
+                max_tokens=cfg.llm_max_tokens,
+                stream=True,
+                extra_body={
+                    "enable_thinking": False  # 关闭Qwen思考过程
+                }
+            )
+            break
+        except NotFoundError:
+            if _attempt > 0:
+                raise
+            _model_id_cache.pop(api_base, None)
+            print(f"模型 id '{model_name}' 已失效（服务器可能更换了模型），重新探测...")
 
     msg = []
     for chunk in response:
+        if cfg.stop_requested:
+            print('\n[收到停止请求，中断生成]', sep='', end='', flush=True)
+            break
         content = chunk.choices[0].delta.content
         if content:
             msg.append(content)
@@ -390,22 +468,30 @@ def query_llama_server(text: str, prompt=None, print=_print) -> str:
     return msg
 
 
-def summarize_subtitles(subtitle_file: Path, output_summary_file: Path, prompt=None, print=_print):
-    """总结字幕内容"""
+def summarize_subtitles(subtitle_file: Path, output_summary_file: Path, prompt=None, print=_print) -> bool:
+    """总结字幕内容。任务被停止时返回 False（不写输出文件）"""
 
     print(f"正在处理字幕文件: {subtitle_file}")
 
     tmp_output_summary_file = output_summary_file.with_suffix('.md_tmp')
 
     # 读取字幕内容
-    subtitle_content = open(subtitle_file, 'r', encoding='utf-8', errors='ignore').read().strip()
+    with open(subtitle_file, 'r', encoding='utf-8', errors='ignore') as f:
+        subtitle_content = f.read().strip()
 
     # 发送到 llama.cpp 服务器进行总结
     summary = query_llama_server(subtitle_content, prompt=prompt, print=print)
-    open(tmp_output_summary_file, 'w', encoding='utf8').write(summary)
+
+    if cfg.stop_requested:
+        print(f"任务已停止，未保存: {subtitle_file}")
+        return False
+
+    with open(tmp_output_summary_file, 'w', encoding='utf8') as f:
+        f.write(summary)
     tmp_output_summary_file.replace(output_summary_file)
 
     print(f"结果已保存: {output_summary_file}")
+    return True
 
 
 # -------------------------------------------------------------------
