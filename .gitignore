@@ -2,6 +2,7 @@
 .run/
 .idea/
 config.json
+播客/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

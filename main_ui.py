@@ -17,7 +17,7 @@ from PySide6.QtGui import QTextCursor
 from qfluentwidgets import (
     FluentWindow, FluentWidget, FluentIcon, Icon, BodyLabel,
     LineEdit, PushButton, CheckBox, PlainTextEdit, TextEdit,
-    HeaderCardWidget, PrimaryPushButton, ListWidget
+    HeaderCardWidget, PrimaryPushButton, ListWidget, ScrollArea
 )
 from queue import Queue, Empty
 import utils
@@ -107,6 +107,8 @@ class HelpDialog(FluentWidget):
 
 class MainInterface(QWidget):
     """主窗口"""
+
+    settings_interface = None  # 由 MainWindow 接线，任务运行时锁定设置页控件
 
     help_text = """
         <h2>软件使用说明</h2>
@@ -198,102 +200,6 @@ class MainInterface(QWidget):
         input_card.viewLayout.addLayout(input_layout)
         left_layout.addWidget(input_card)
 
-        # 左2区域：配置区
-        config_card = HeaderCardWidget("配置区")
-        config_layout = QGridLayout()
-
-        # BBDown 路径
-        row = 0
-        config_layout.addWidget(BodyLabel("BBDown 路径："), row, 0)
-        self.bbdown_edit = LineEdit()
-        self.bbdown_edit.textChanged.connect(self.on_bbdown_edit_changed)
-        self.bbdown_button = PushButton("浏览")
-        self.bbdown_button.clicked.connect(lambda: self.select_file("BBDown 可执行文件", self.bbdown_edit))
-        config_layout.addWidget(self.bbdown_edit, row, 1)
-        config_layout.addWidget(self.bbdown_button, row, 2)
-
-        # BBDown 其他参数
-        row = 1
-        config_layout.addWidget(BodyLabel("BBDown其他参数："), row, 0)
-        self.bbdown_other_args_edit = LineEdit()
-        self.bbdown_other_args_edit.textChanged.connect(self.on_bbdown_other_args_edit_changed)
-        config_layout.addWidget(self.bbdown_other_args_edit, row, 1, 1, 2)
-
-        # Qwen3-ASR 路径
-        row = 2
-        config_layout.addWidget(BodyLabel("Qwen3-ASR路径："), row, 0)
-        self.qwen3_asr_edit = LineEdit()
-        self.qwen3_asr_edit.textChanged.connect(self.on_qwen3_asr_edit_changed)
-        self.qwen3_asr_button = PushButton("浏览")
-        self.qwen3_asr_button.clicked.connect(lambda: self.select_file("Qwen3-ASR 可执行文件", self.qwen3_asr_edit))
-        config_layout.addWidget(self.qwen3_asr_edit, row, 1)
-        config_layout.addWidget(self.qwen3_asr_button, row, 2)
-
-        # Qwen3-ASR 其他参数
-        row = 3
-        config_layout.addWidget(BodyLabel("Qwen3-ASR其他参数："), row, 0)
-        self.qwen3_asr_other_args_edit = LineEdit()
-        self.qwen3_asr_other_args_edit.textChanged.connect(self.on_qwen3_asr_other_args_edit_changed)
-        config_layout.addWidget(self.qwen3_asr_other_args_edit, row, 1, 1, 2)
-
-        # LLM 模型路径
-        row = 4
-        config_layout.addWidget(BodyLabel("LLM 模型路径："), row, 0)
-        self.llm_gguf_edit = LineEdit()
-        self.llm_gguf_edit.textChanged.connect(self.on_llm_gguf_edit_changed)
-        self.llm_gguf_button = PushButton("浏览")
-        self.llm_gguf_button.clicked.connect(lambda: self.select_file("LLM 模型文件", self.llm_gguf_edit))
-        config_layout.addWidget(self.llm_gguf_edit, row, 1)
-        config_layout.addWidget(self.llm_gguf_button, row, 2)
-
-        # Llama-CPP 服务器路径
-        row = 5
-        config_layout.addWidget(BodyLabel("Llama-CPP 服务器路径："), row, 0)
-        self.llama_cpp_edit = LineEdit()
-        self.llama_cpp_edit.textChanged.connect(self.on_llama_cpp_edit_changed)
-        self.llama_cpp_button = PushButton("浏览")
-        self.llama_cpp_button.clicked.connect(lambda: self.select_file("Llama-CPP 服务器可执行文件", self.llama_cpp_edit))
-        config_layout.addWidget(self.llama_cpp_edit, row, 1)
-        config_layout.addWidget(self.llama_cpp_button, row, 2)
-
-        # Llama服务端口
-        row = 6
-        config_layout.addWidget(BodyLabel("Llama服务端口："), row, 0)
-        self.llama_cpp_port_edit = LineEdit()
-        self.llama_cpp_port_edit.textChanged.connect(self.on_llama_cpp_port_edit_changed)
-        config_layout.addWidget(self.llama_cpp_port_edit, row, 1)
-
-        # Llama服务其他参数
-        row = 7
-        config_layout.addWidget(BodyLabel("Llama服务其他参数："), row, 0)
-        self.llama_cpp_other_args_edit = LineEdit()
-        self.llama_cpp_other_args_edit.textChanged.connect(self.on_llama_cpp_other_args_edit_changed)
-        config_layout.addWidget(self.llama_cpp_other_args_edit, row, 1, 1, 2)
-
-        # 使用远程llama-server
-        row = 8
-        self.use_remote_llama_server_checkbox = CheckBox("使用远程llama-server")
-        self.use_remote_llama_server_checkbox.toggled.connect(self.on_use_remote_llama_server_checkbox_toggled)
-        config_layout.addWidget(self.use_remote_llama_server_checkbox, row, 0, 1, 3)
-
-        # 远程llama-server地址
-        row = 9
-        config_layout.addWidget(BodyLabel("远程llama-server地址："), row, 0)
-        self.remote_llama_server_address_edit = LineEdit()
-        self.remote_llama_server_address_edit.setPlaceholderText("http://192.168.1.100:45124")
-        self.remote_llama_server_address_edit.textChanged.connect(self.on_remote_llama_server_address_edit_changed)
-        config_layout.addWidget(self.remote_llama_server_address_edit, row, 1, 1, 2)
-
-        # 远程llama-server密钥
-        row = 10
-        config_layout.addWidget(BodyLabel("远程llama-server密钥："), row, 0)
-        self.remote_llama_server_key_edit = LineEdit()
-        self.remote_llama_server_key_edit.setPlaceholderText("留空则无需密钥")
-        self.remote_llama_server_key_edit.textChanged.connect(self.on_remote_llama_server_key_edit_changed)
-        config_layout.addWidget(self.remote_llama_server_key_edit, row, 1, 1, 2)
-
-        config_card.viewLayout.addLayout(config_layout)
-        left_layout.addWidget(config_card)
 
         # 右侧区域
         right_layout = QVBoxLayout()
@@ -302,18 +208,6 @@ class MainInterface(QWidget):
         operation_card = HeaderCardWidget("操作区")
         operation_layout = QVBoxLayout()
 
-        # 字幕总结提示词
-        text2md_prompt_layout = QHBoxLayout()
-        self.text2md_prompt_edit = LineEdit()
-        self.text2md_prompt_edit.textChanged.connect(self.on_text2md_prompt_edit_changed)
-        self.text2md_prompt_button = PushButton("恢复默认")
-        self.text2md_prompt_button.clicked.connect(lambda: self.reset_text2md_prompt())
-
-        text2md_prompt_layout.addWidget(BodyLabel("字幕总结提示词："))
-        text2md_prompt_layout.addWidget(self.text2md_prompt_edit)
-        text2md_prompt_layout.addWidget(self.text2md_prompt_button)
-
-        operation_layout.addLayout(text2md_prompt_layout)
 
         # 输入输出文件夹
         folder_layout = QHBoxLayout()
@@ -397,22 +291,7 @@ class MainInterface(QWidget):
 
     def load_config(self):
         """加载配置"""
-        self.text2md_prompt_edit.setText(cfg.text2md_prompt)
         self.input_output_folder_edit.setText(cfg.input_output_dir)
-        self.bbdown_edit.setText(cfg.bbdown_exe)
-        self.bbdown_audio_only_checkbox.setCheckState(Qt.Checked if cfg.bbdown_only_audio else Qt.Unchecked)
-        self.bbdown_other_args_edit.setText(' '.join(cfg.bbdown_other_args))
-        self.qwen3_asr_edit.setText(cfg.qwen3_asr_exe)
-        self.qwen3_asr_other_args_edit.setText(' '.join(cfg.qwen3_asr_other_args))
-        self.llm_gguf_edit.setText(cfg.llm_gguf_file)
-        self.llama_cpp_edit.setText(cfg.llama_cpp_server)
-        self.llama_cpp_port_edit.setText(str(cfg.llama_cpp_port))
-        self.llama_cpp_other_args_edit.setText(' '.join(cfg.llama_cpp_other_args))
-        self.use_remote_llama_server_checkbox.setCheckState(Qt.Checked if cfg.use_remote_llama_server else Qt.Unchecked)
-        self.remote_llama_server_address_edit.setText(cfg.remote_llama_server_address)
-        self.remote_llama_server_address_edit.setEnabled(cfg.use_remote_llama_server)
-        self.remote_llama_server_key_edit.setText(cfg.remote_llama_server_key)
-        self.remote_llama_server_key_edit.setEnabled(cfg.use_remote_llama_server)
 
     # --------------------------------------------------------------------
 
@@ -427,8 +306,8 @@ class MainInterface(QWidget):
 
     def disbale_all_button(self):
         """禁用所有按钮"""
-        self.text2md_prompt_edit.setEnabled(False)
-        self.text2md_prompt_button.setEnabled(False)
+        if self.settings_interface:
+            self.settings_interface.disbale_all_button()
         self.input_output_folder_edit.setEnabled(False)
         self.input_output_folder_button.setEnabled(False)
         self.check_env_button.setEnabled(False)
@@ -438,14 +317,11 @@ class MainInterface(QWidget):
         self.summarize_button.setEnabled(False)
         self.full_process_button.setEnabled(False)
         self.bbdown_audio_only_checkbox.setEnabled(False)
-        self.use_remote_llama_server_checkbox.setEnabled(False)
-        self.remote_llama_server_address_edit.setEnabled(False)
-        self.remote_llama_server_key_edit.setEnabled(False)
 
     def enable_all_button(self):
         """启用所有按钮"""
-        self.text2md_prompt_edit.setEnabled(True)
-        self.text2md_prompt_button.setEnabled(True)
+        if self.settings_interface:
+            self.settings_interface.enable_all_button()
         self.input_output_folder_edit.setEnabled(True)
         self.input_output_folder_button.setEnabled(True)
         self.check_env_button.setEnabled(True)
@@ -455,9 +331,6 @@ class MainInterface(QWidget):
         self.summarize_button.setEnabled(True)
         self.full_process_button.setEnabled(True)
         self.bbdown_audio_only_checkbox.setEnabled(True)
-        self.use_remote_llama_server_checkbox.setEnabled(True)
-        self.remote_llama_server_address_edit.setEnabled(cfg.use_remote_llama_server)
-        self.remote_llama_server_key_edit.setEnabled(cfg.use_remote_llama_server)
 
     def select_file(self, title, line_edit):
         """选择文件"""
@@ -693,6 +566,10 @@ class MainInterface(QWidget):
                 self.print(f"跳过已存在的总结: {output_file}")
                 continue
 
+            if text_file.stat().st_size == 0:
+                self.print(f"{text_file} 的转录为空，疑似无人声的音频。跳过该文件的 LLM 总结")
+                continue
+
             self.print(f"处理 {text_file}")
             is_ok = utils.summarize_subtitles(text_file, output_file_tmp, prompt=cfg.text2md_prompt, print=self.print)
             if not is_ok:
@@ -768,17 +645,251 @@ class MainInterface(QWidget):
     # --------------------------------------------------------------------
     # 设定更新事件
 
-    def on_text2md_prompt_edit_changed(self, text: str):
-        """字幕总结提示词改变时更新配置"""
-        cfg.text2md_prompt = text
-
-    def reset_text2md_prompt(self):
-        """字幕总结提示词重置"""
-        self.text2md_prompt_edit.setText(cfg._default_text2md_prompt)
-
     def on_input_output_folder_edit_changed(self, text: str):
         """输入目录改变时更新配置"""
         cfg.input_output_dir = text
+
+    # --------------------------------------------------------------------
+
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+
+        # 停止 视频下载 进程
+        utils.stop_download_video(print=self.print)
+        # 停止 qwen3-asr 进程
+        utils.stop_qwen3_asr(print=self.print)
+        # 停止llama 服务器
+        utils.stop_llama_server(print=self.print)
+
+        cfg.stop_requested = True
+        if self.worker_thread:
+            self.worker_thread.stop()
+            self.worker_thread.wait(5000)
+
+        # 停止日志线程
+        self.log_timer.stop()
+
+        event.accept()
+
+    # --------------------------------------------------------------------
+
+
+class SettingsInterface(ScrollArea):
+    """设置界面：程序与模型路径、远程 llama-server、提示词"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        self.load_config()
+
+    def init_ui(self):
+        """初始化界面（滚动容器 + 三张设置卡）"""
+        self.scroll_widget = QWidget()
+        self.expandLayout = QVBoxLayout(self.scroll_widget)
+        self.expandLayout.setContentsMargins(24, 24, 24, 24)
+        self.expandLayout.setSpacing(12)
+
+        # 卡1：程序与模型路径
+        path_card = HeaderCardWidget("程序与模型路径")
+        path_layout = QGridLayout()
+
+        row = 0
+        path_layout.addWidget(BodyLabel("BBDown 路径："), row, 0)
+        self.bbdown_edit = LineEdit()
+        self.bbdown_edit.textChanged.connect(self.on_bbdown_edit_changed)
+        self.bbdown_button = PushButton("浏览")
+        self.bbdown_button.clicked.connect(lambda: self.select_file("BBDown 可执行文件", self.bbdown_edit))
+        path_layout.addWidget(self.bbdown_edit, row, 1)
+        path_layout.addWidget(self.bbdown_button, row, 2)
+
+        row = 1
+        path_layout.addWidget(BodyLabel("BBDown其他参数："), row, 0)
+        self.bbdown_other_args_edit = LineEdit()
+        self.bbdown_other_args_edit.textChanged.connect(self.on_bbdown_other_args_edit_changed)
+        path_layout.addWidget(self.bbdown_other_args_edit, row, 1, 1, 2)
+
+        row = 2
+        path_layout.addWidget(BodyLabel("Qwen3-ASR路径："), row, 0)
+        self.qwen3_asr_edit = LineEdit()
+        self.qwen3_asr_edit.textChanged.connect(self.on_qwen3_asr_edit_changed)
+        self.qwen3_asr_button = PushButton("浏览")
+        self.qwen3_asr_button.clicked.connect(lambda: self.select_file("Qwen3-ASR 可执行文件", self.qwen3_asr_edit))
+        path_layout.addWidget(self.qwen3_asr_edit, row, 1)
+        path_layout.addWidget(self.qwen3_asr_button, row, 2)
+
+        row = 3
+        path_layout.addWidget(BodyLabel("Qwen3-ASR其他参数："), row, 0)
+        self.qwen3_asr_other_args_edit = LineEdit()
+        self.qwen3_asr_other_args_edit.textChanged.connect(self.on_qwen3_asr_other_args_edit_changed)
+        path_layout.addWidget(self.qwen3_asr_other_args_edit, row, 1, 1, 2)
+
+        row = 4
+        path_layout.addWidget(BodyLabel("LLM 模型路径："), row, 0)
+        self.llm_gguf_edit = LineEdit()
+        self.llm_gguf_edit.textChanged.connect(self.on_llm_gguf_edit_changed)
+        self.llm_gguf_button = PushButton("浏览")
+        self.llm_gguf_button.clicked.connect(lambda: self.select_file("LLM 模型文件", self.llm_gguf_edit))
+        path_layout.addWidget(self.llm_gguf_edit, row, 1)
+        path_layout.addWidget(self.llm_gguf_button, row, 2)
+
+        row = 5
+        path_layout.addWidget(BodyLabel("Llama-CPP 服务器路径："), row, 0)
+        self.llama_cpp_edit = LineEdit()
+        self.llama_cpp_edit.textChanged.connect(self.on_llama_cpp_edit_changed)
+        self.llama_cpp_button = PushButton("浏览")
+        self.llama_cpp_button.clicked.connect(lambda: self.select_file("Llama-CPP 服务器可执行文件", self.llama_cpp_edit))
+        path_layout.addWidget(self.llama_cpp_edit, row, 1)
+        path_layout.addWidget(self.llama_cpp_button, row, 2)
+
+        row = 6
+        path_layout.addWidget(BodyLabel("Llama服务端口："), row, 0)
+        self.llama_cpp_port_edit = LineEdit()
+        self.llama_cpp_port_edit.textChanged.connect(self.on_llama_cpp_port_edit_changed)
+        path_layout.addWidget(self.llama_cpp_port_edit, row, 1)
+
+        row = 7
+        path_layout.addWidget(BodyLabel("Llama服务其他参数："), row, 0)
+        self.llama_cpp_other_args_edit = LineEdit()
+        self.llama_cpp_other_args_edit.textChanged.connect(self.on_llama_cpp_other_args_edit_changed)
+        path_layout.addWidget(self.llama_cpp_other_args_edit, row, 1, 1, 2)
+
+        path_card.viewLayout.addLayout(path_layout)
+        self.expandLayout.addWidget(path_card)
+
+        # 卡2：远程 llama-server
+        remote_card = HeaderCardWidget("远程 llama-server")
+        remote_layout = QGridLayout()
+
+        row = 0
+        self.use_remote_llama_server_checkbox = CheckBox("使用远程llama-server")
+        self.use_remote_llama_server_checkbox.toggled.connect(self.on_use_remote_llama_server_checkbox_toggled)
+        remote_layout.addWidget(self.use_remote_llama_server_checkbox, row, 0, 1, 2)
+
+        row = 1
+        remote_layout.addWidget(BodyLabel("远程llama-server地址："), row, 0)
+        self.remote_llama_server_address_edit = LineEdit()
+        self.remote_llama_server_address_edit.setPlaceholderText("http://192.168.1.100:45124")
+        self.remote_llama_server_address_edit.textChanged.connect(self.on_remote_llama_server_address_edit_changed)
+        remote_layout.addWidget(self.remote_llama_server_address_edit, row, 1)
+
+        row = 2
+        remote_layout.addWidget(BodyLabel("远程llama-server密钥："), row, 0)
+        self.remote_llama_server_key_edit = LineEdit()
+        self.remote_llama_server_key_edit.setPlaceholderText("留空则无需密钥")
+        self.remote_llama_server_key_edit.textChanged.connect(self.on_remote_llama_server_key_edit_changed)
+        remote_layout.addWidget(self.remote_llama_server_key_edit, row, 1)
+
+        remote_card.viewLayout.addLayout(remote_layout)
+        self.expandLayout.addWidget(remote_card)
+
+        # 卡3：提示词（多行编辑框：标签+按钮一行，编辑框占下一行）
+        prompt_card = HeaderCardWidget("提示词")
+        prompt_layout = QVBoxLayout()
+
+        text2md_row = QHBoxLayout()
+        text2md_row.addWidget(BodyLabel("字幕总结提示词："))
+        text2md_row.addStretch(1)
+        self.text2md_prompt_button = PushButton("恢复默认")
+        self.text2md_prompt_button.clicked.connect(lambda: self.reset_text2md_prompt())
+        text2md_row.addWidget(self.text2md_prompt_button)
+        prompt_layout.addLayout(text2md_row)
+
+        self.text2md_prompt_edit = PlainTextEdit()
+        self.text2md_prompt_edit.setFixedHeight(96)
+        self.text2md_prompt_edit.textChanged.connect(self.on_text2md_prompt_edit_changed)
+        prompt_layout.addWidget(self.text2md_prompt_edit)
+
+        prompt_layout.addSpacing(8)
+
+        summary_row = QHBoxLayout()
+        summary_row.addWidget(BodyLabel("二次总结提示词："))
+        summary_row.addStretch(1)
+        self.summary_prompt_button = PushButton("恢复默认")
+        self.summary_prompt_button.clicked.connect(lambda: self.reset_summary_prompt())
+        summary_row.addWidget(self.summary_prompt_button)
+        prompt_layout.addLayout(summary_row)
+
+        self.summary_prompt_edit = PlainTextEdit()
+        self.summary_prompt_edit.setFixedHeight(96)
+        self.summary_prompt_edit.setPlaceholderText("请输入二次总结的提示词，必须包含 {text} 字段...")
+        self.summary_prompt_edit.textChanged.connect(self.on_summary_prompt_edit_changed)
+        prompt_layout.addWidget(self.summary_prompt_edit)
+
+        prompt_card.viewLayout.addLayout(prompt_layout)
+        self.expandLayout.addWidget(prompt_card)
+
+        self.expandLayout.addStretch(1)
+
+        self.setWidget(self.scroll_widget)
+        self.setWidgetResizable(True)
+        self.setObjectName('settingsInterface')
+        self.scroll_widget.setObjectName('settingsScrollWidget')
+        self.setStyleSheet(
+            "QScrollArea, #settingsScrollWidget { background: transparent; border: none; }"
+        )
+
+    def _all_setting_widgets(self):
+        """全部设置控件"""
+        return (
+            self.bbdown_edit, self.bbdown_button, self.bbdown_other_args_edit,
+            self.qwen3_asr_edit, self.qwen3_asr_button, self.qwen3_asr_other_args_edit,
+            self.llm_gguf_edit, self.llm_gguf_button,
+            self.llama_cpp_edit, self.llama_cpp_button, self.llama_cpp_port_edit,
+            self.llama_cpp_other_args_edit,
+            self.use_remote_llama_server_checkbox,
+            self.remote_llama_server_address_edit, self.remote_llama_server_key_edit,
+            self.text2md_prompt_edit, self.text2md_prompt_button,
+            self.summary_prompt_edit, self.summary_prompt_button,
+        )
+
+    def load_config(self):
+        """加载配置"""
+        self.text2md_prompt_edit.setPlainText(cfg.text2md_prompt)
+        self.bbdown_edit.setText(cfg.bbdown_exe)
+        self.bbdown_other_args_edit.setText(' '.join(cfg.bbdown_other_args))
+        self.qwen3_asr_edit.setText(cfg.qwen3_asr_exe)
+        self.qwen3_asr_other_args_edit.setText(' '.join(cfg.qwen3_asr_other_args))
+        self.llm_gguf_edit.setText(cfg.llm_gguf_file)
+        self.llama_cpp_edit.setText(cfg.llama_cpp_server)
+        self.llama_cpp_port_edit.setText(str(cfg.llama_cpp_port))
+        self.llama_cpp_other_args_edit.setText(' '.join(cfg.llama_cpp_other_args))
+        self.use_remote_llama_server_checkbox.setCheckState(Qt.Checked if cfg.use_remote_llama_server else Qt.Unchecked)
+        self.remote_llama_server_address_edit.setText(cfg.remote_llama_server_address)
+        self.remote_llama_server_address_edit.setEnabled(cfg.use_remote_llama_server)
+        self.remote_llama_server_key_edit.setText(cfg.remote_llama_server_key)
+        self.remote_llama_server_key_edit.setEnabled(cfg.use_remote_llama_server)
+        self.summary_prompt_edit.setPlainText(cfg.summary_prompt)
+
+    def disbale_all_button(self):
+        """禁用所有设置控件（任务运行时锁定）"""
+        for w in self._all_setting_widgets():
+            w.setEnabled(False)
+
+    def enable_all_button(self):
+        """启用所有设置控件"""
+        for w in self._all_setting_widgets():
+            w.setEnabled(True)
+        # 远程地址/密钥按配置恢复启用状态
+        remote_enabled = cfg.use_remote_llama_server
+        self.remote_llama_server_address_edit.setEnabled(remote_enabled)
+        self.remote_llama_server_key_edit.setEnabled(remote_enabled)
+
+    def select_file(self, title, line_edit):
+        """选择文件"""
+        file_path, _ = QFileDialog.getOpenFileName(self, title)
+        if file_path:
+            line_edit.setText(file_path)
+
+    # --------------------------------------------------------------------
+    # 设定更新事件
+
+    def on_text2md_prompt_edit_changed(self):
+        """字幕总结提示词改变时更新配置"""
+        cfg.text2md_prompt = self.text2md_prompt_edit.toPlainText()
+
+    def reset_text2md_prompt(self):
+        """字幕总结提示词重置"""
+        self.text2md_prompt_edit.setPlainText(cfg._default_text2md_prompt)
 
     def on_bbdown_edit_changed(self, text: str):
         """bbdown 改变时更新配置"""
@@ -806,7 +917,12 @@ class MainInterface(QWidget):
 
     def on_llama_cpp_port_edit_changed(self, text: str):
         """llama.cpp 服务器端口改变时更新配置"""
-        cfg.llama_cpp_port = int(text)
+        if not text.strip():
+            return
+        try:
+            cfg.llama_cpp_port = int(text)
+        except ValueError:
+            pass
 
     def on_llama_cpp_other_args_edit_changed(self, text: str):
         """llama.cpp 其他参数改变时更新配置"""
@@ -826,29 +942,14 @@ class MainInterface(QWidget):
         """远程llama-server密钥改变时更新配置"""
         cfg.remote_llama_server_key = text
 
-    # --------------------------------------------------------------------
+    def on_summary_prompt_edit_changed(self):
+        """更新二次总结提示词"""
+        cfg.summary_prompt = self.summary_prompt_edit.toPlainText()
 
-    def closeEvent(self, event):
-        """窗口关闭事件"""
+    def reset_summary_prompt(self):
+        """恢复默认二次总结提示词"""
+        self.summary_prompt_edit.setPlainText(cfg._default_summary_prompt)
 
-        # 停止 视频下载 进程
-        utils.stop_download_video(print=self.print)
-        # 停止 qwen3-asr 进程
-        utils.stop_qwen3_asr(print=self.print)
-        # 停止llama 服务器
-        utils.stop_llama_server(print=self.print)
-
-        cfg.stop_requested = True
-        if self.worker_thread:
-            self.worker_thread.stop()
-            self.worker_thread.wait(5000)
-
-        # 停止日志线程
-        self.log_timer.stop()
-
-        event.accept()
-
-    # --------------------------------------------------------------------
 
 
 # ------------------------------------------------------------
@@ -856,6 +957,8 @@ class MainInterface(QWidget):
 
 class SummaryInterface(QWidget):
     """总结界面：合并和总结 MD 文件"""
+
+    settings_interface = None  # 由 MainWindow 接线，任务运行时锁定设置页控件
 
     help_text = f"""
     <h2>MD 文件合并与总结工具</h2>
@@ -997,20 +1100,6 @@ class SummaryInterface(QWidget):
         function_card = HeaderCardWidget('功能区')
         function_layout = QVBoxLayout()
 
-        # 二次总结提示词栏
-        summary_prompt_layout = QHBoxLayout()
-        self.summary_prompt_edit = LineEdit()
-        self.summary_prompt_edit.setText(cfg.summary_prompt)
-        self.summary_prompt_edit.setPlaceholderText("请输入二次总结的提示词，必须包含 {text} 字段...")
-        self.summary_prompt_edit.textChanged.connect(self.on_summary_prompt_edit_changed)
-        self.summary_prompt_button = PushButton("恢复默认")
-        self.summary_prompt_button.clicked.connect(lambda: self.reset_summary_prompt())
-
-        summary_prompt_layout.addWidget(BodyLabel("二次总结提示词："))
-        summary_prompt_layout.addWidget(self.summary_prompt_edit)
-        summary_prompt_layout.addWidget(self.summary_prompt_button)
-
-        function_layout.addLayout(summary_prompt_layout)
 
         # 功能按钮
         function_buttons_layout = QVBoxLayout()
@@ -1063,22 +1152,17 @@ class SummaryInterface(QWidget):
 
     def disable_all_buttons(self):
         """禁用所有按钮"""
+        if self.settings_interface:
+            self.settings_interface.disbale_all_button()
         self.start_summary_button.setEnabled(False)
 
     def enable_all_buttons(self):
         """启用所有按钮"""
+        if self.settings_interface:
+            self.settings_interface.enable_all_button()
         self.start_summary_button.setEnabled(True)
 
     # --------------------------------------------------------------------
-
-    # 提示词操作
-    def on_summary_prompt_edit_changed(self, text: str):
-        """更新二次总结提示词"""
-        cfg.summary_prompt = text
-
-    def reset_summary_prompt(self):
-        """恢复默认二次总结提示词"""
-        self.summary_prompt_edit.setText(cfg._default_summary_prompt)
 
     # 文件夹操作方法
     def add_folders(self):
@@ -1278,10 +1362,6 @@ class SummaryInterface(QWidget):
 
     # --------------------------------------------------------------------
 
-    def load_config(self):
-        """加载配置"""
-        self.summary_prompt_edit.setText(cfg.summary_prompt)
-
     def show_help(self):
         """显示帮助"""
         self.help_dialog.show()
@@ -1337,6 +1417,13 @@ class MainWindow(FluentWindow):
         self.summary_interface = SummaryInterface()
         self.addSubInterface(self.summary_interface, FluentIcon.BUS, '内容二阶导', isTransparent=True)
 
+        self.settings_interface = SettingsInterface()
+        self.addSubInterface(self.settings_interface, FluentIcon.SETTING, '设置')
+
+        # 接线：任务运行时由功能界面锁定设置页控件
+        self.main_interface.settings_interface = self.settings_interface
+        self.summary_interface.settings_interface = self.settings_interface
+
         self.setResizeEnabled(True)
         self.setGeometry(100, 100, 1200, 800)
         self.show()
@@ -1347,7 +1434,7 @@ class MainWindow(FluentWindow):
     def load_config(self):
         utils.load_config()
         self.main_interface.load_config()
-        self.summary_interface.load_config()
+        self.settings_interface.load_config()
 
     def save_config(self):
         utils.save_config()

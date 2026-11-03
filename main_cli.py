@@ -73,6 +73,10 @@ def main(input_output_folder):
     print("\n总结字幕内容...")
     failed = []
     for out_txt_file, out_asr_complete_file, out_md_file, out_md_file_tmp in tasks:
+        if out_txt_file.stat().st_size == 0:
+            print(f"{out_txt_file} 的转录为空，疑似无人声的音频。跳过该文件的 LLM 总结")
+            continue
+
         try:
             is_ok = summarize_subtitles(out_txt_file, out_md_file_tmp)
             if is_ok:

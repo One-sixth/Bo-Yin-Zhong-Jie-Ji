@@ -17,6 +17,13 @@ def fake_summarize_ok(txt_file, md_tmp_file, *args, **kwargs):
     return True
 
 
+def fake_convert_makes_txt(media_file, *args, **kwargs):
+    """带真实副作用的 convert 替身：创建非空 txt（模拟 qwen3-asr 正常产出）"""
+    txt = Path(media_file).with_suffix(".txt")
+    txt.write_text("转录内容", encoding="utf-8")
+    return True, txt
+
+
 class CliTestBase(unittest.TestCase):
 
     def setUp(self):
@@ -54,10 +61,7 @@ class TestCliFlow(CliTestBase):
         a = self._make_media("a.mp4")
         b = self._make_media("b.mp4")
 
-        main_cli.convert_to_subtitle.side_effect = [
-            (True, a.with_suffix(".txt")),
-            (True, b.with_suffix(".txt")),
-        ]
+        main_cli.convert_to_subtitle.side_effect = fake_convert_makes_txt
         main_cli.summarize_subtitles.side_effect = fake_summarize_ok
 
         main_cli.main(str(self.folder))
@@ -89,15 +93,25 @@ class TestCliFlow(CliTestBase):
         self.assertEqual(main_cli.summarize_subtitles.call_count, 1)
         main_cli.summarize_subtitles.assert_called_once()
 
+    def test_empty_txt_skips_summary(self):
+        """0 字节 txt（无人声音频）跳过 LLM 总结，不产生 md，标记保留"""
+        a = self._make_media("a.mp4")
+        a.with_suffix(".complete_asr").touch()
+        a.with_suffix(".txt").write_bytes(b"")  # 无人声：转录输出为空
+
+        main_cli.main(str(self.folder))
+
+        main_cli.convert_to_subtitle.assert_not_called()
+        main_cli.summarize_subtitles.assert_not_called()  # 空转录不调 LLM
+        self.assertFalse(a.with_suffix(".md").exists())
+        self.assertTrue(a.with_suffix(".complete_asr").exists())  # 标记保留，不误删
+
     def test_single_failure_does_not_break_chain(self):
         """单文件总结异常不应中断后续文件（不断链 + 失败清单）"""
         a = self._make_media("a.mp4")
         b = self._make_media("b.mp4")
 
-        main_cli.convert_to_subtitle.side_effect = [
-            (True, a.with_suffix(".txt")),
-            (True, b.with_suffix(".txt")),
-        ]
+        main_cli.convert_to_subtitle.side_effect = fake_convert_makes_txt
         calls = {"n": 0}
 
         def flaky_summarize(txt_file, md_tmp_file, *args, **kwargs):
@@ -120,7 +134,7 @@ class TestCliFlow(CliTestBase):
     def test_summarize_stopped_marks_failed(self):
         """summarize 返回 False（任务被停止）→ 计入失败、不删标记"""
         a = self._make_media("a.mp4")
-        main_cli.convert_to_subtitle.side_effect = [(True, a.with_suffix(".txt"))]
+        main_cli.convert_to_subtitle.side_effect = fake_convert_makes_txt
         main_cli.summarize_subtitles.return_value = False
 
         main_cli.main(str(self.folder))
